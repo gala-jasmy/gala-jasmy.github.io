@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>定投看板</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --plane:#f9f9f7; --surface:#fcfcfb; --ink:#0b0b0b; --ink2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --axis:#c3c2b7; --border:rgba(11,11,11,.10);
+  --profit:#0ca30c; --loss:#d03b3b; --blue:#2a78d6; --blue-fill:rgba(42,120,214,.14);
+  --chip:#f0efec;
+}
+@media (prefers-color-scheme: dark){:root{
+  --plane:#0d0d0d; --surface:#1a1a19; --ink:#fff; --ink2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,.10);
+  --profit:#0ca30c; --loss:#e05555; --blue:#3987e5; --blue-fill:rgba(57,135,229,.18);
+  --chip:#26261f;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--plane);color:var(--ink);
+  font-family:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  -webkit-font-smoothing:antialiased;line-height:1.5}
+.wrap{max-width:1040px;margin:0 auto;padding:24px 20px 60px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 16px;margin-bottom:6px}
+h1{font-size:20px;margin:0;font-weight:650}
+.sub{color:var(--muted);font-size:13px}
+.fng{margin-left:auto;font-size:13px;color:var(--ink2);background:var(--chip);
+  border:1px solid var(--border);border-radius:999px;padding:4px 12px}
+.btn{font:inherit;font-size:13px;cursor:pointer;background:var(--chip);color:var(--ink2);
+  border:1px solid var(--border);border-radius:999px;padding:4px 14px}
+.btn:hover{color:var(--ink)} .btn:disabled{opacity:.5;cursor:default}
+.updated{font-size:12px;color:var(--muted);width:100%;margin-top:2px}
+section{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:18px 18px 16px;margin-top:16px}
+h2{font-size:14px;margin:0 0 14px;font-weight:600;color:var(--ink)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-top:16px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.kpi .lab{font-size:12px;color:var(--muted);margin-bottom:6px}
+.kpi .val{font-size:26px;font-weight:650;letter-spacing:-.01em}
+.kpi .sub2{font-size:12px;color:var(--ink2);margin-top:3px}
+.pos{color:var(--profit)} .neg{color:var(--loss)}
+.note{font-size:12px;color:var(--muted);margin-top:12px}
+svg{display:block;width:100%;height:auto;overflow:visible}
+.axis text{fill:var(--muted);font-size:11px} .axis line{stroke:var(--grid)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+th,td{padding:7px 8px;text-align:right;border-bottom:1px solid var(--grid);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+th{color:var(--muted);font-weight:500;font-size:12px;position:sticky;top:0;background:var(--surface)}
+th.sortable{cursor:pointer;user-select:none;white-space:nowrap}
+th.sortable:hover{color:var(--ink)}
+th.active{color:var(--ink);font-weight:600}
+td:first-child,th:first-child{text-align:left;font-variant-numeric:normal}
+.tbl-wrap{overflow-x:auto}
+.dot{display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.ava{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;
+  font-size:8px;font-weight:700;color:#fff;margin-right:8px;vertical-align:middle;position:relative;
+  overflow:hidden;flex:none;letter-spacing:-.02em}
+.ava img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.coin-cell{display:inline-flex;align-items:center}
+.tip{position:fixed;pointer-events:none;background:var(--ink);color:var(--plane);
+  font-size:12px;padding:6px 9px;border-radius:7px;opacity:0;transition:opacity .08s;z-index:9;
+  font-variant-numeric:tabular-nums;white-space:nowrap;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+.legend{font-size:12px;color:var(--ink2);display:flex;gap:16px;margin-bottom:10px}
+.foot{color:var(--muted);font-size:12px;margin-top:20px;text-align:center}
+.links a{color:var(--blue);text-decoration:none;font-size:13px;margin-left:12px}
+.links a:hover{text-decoration:underline}
+.strategy{white-space:pre-wrap;line-height:1.7;font-size:13.5px;color:var(--ink2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1 id="pageTitle">📊 定投看板</h1>
+    <span class="sub" id="sub"></span>
+    <span class="links" id="siteLinks"></span>
+    <span class="fng" id="fng"></span>
+    <button class="btn" id="updateBtn" style="display:none">⬇ 拉取链上</button>
+    <button class="btn" id="refreshBtn">🔄 刷新价</button>
+    <div class="updated" id="updated"></div>
+  </header>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section>
+    <h2>累计定投投入</h2>
+    <div id="area"></div>
+    <div class="note" id="areaNote"></div>
+  </section>
+
+  <section>
+    <h2>持仓明细</h2>
+    <div class="tbl-wrap"><table id="tbl"></table></div>
+    <div class="note" id="tblNote"></div>
+  </section>
+
+  <section id="closedSec" style="display:none">
+    <h2>已清仓 <span id="closedCount" class="sub"></span></h2>
+    <div class="tbl-wrap"><table id="tblClosed"></table></div>
+    <div class="note" id="closedNote"></div>
+  </section>
+
+  <section id="strategySec" style="display:none">
+    <h2>我的定投规则</h2>
+    <div class="strategy" id="strategyBody"></div>
+  </section>
+
+  <div class="foot" id="foot"></div>
+</div>
+<div class="tip" id="tip"></div>
+<script>
+const MODE = "public";        // 'static'（内嵌数据）或 'server'（调 /api 接口）
+const _EMBED = {"generated": "2026-07-25 00:22", "fng": {"value": 28, "classification": "Fear", "timestamp": 1784851200}, "totals": {"invested": 2670.79, "market_value": 2683.91, "recovered": 0.0, "pnl": 13.12, "roi": 0.0049, "held": 29, "priced_held": 29, "unpriced": [], "unpriced_invested": 0}, "month": {"month_buy_count": 7, "month_invested": 700.0, "month_recovered": 0, "total_invested": 2670.79, "market_value": 2683.91, "pnl": 13.12, "roi": 0.0}, "positions": [{"coin": "SIREN", "invested": 100.0, "holding": 1976.846046, "avg_cost": 0.05058563, "price": 0.03165458, "market_value": 62.58, "sold_recovered": 0.0, "pnl": -37.42, "roi": -0.3742, "mult": 0.626, "priced": true, "closed": false, "chain": "bsc", "addr": "0x997a58129890bbda032231a52ed1ddc845fc18e1", "logo": "https://coin-images.coingecko.com/coins/images/54479/large/siren.png?1739960056", "incomplete": false}, {"coin": "RIVER", "invested": 100.0, "holding": 21.246537, "avg_cost": 4.7066493, "price": 3.10217147, "market_value": 65.91, "sold_recovered": 0.0, "pnl": -34.09, "roi": -0.3409, "mult": 0.659, "priced": true, "closed": false, "chain": "bsc", "addr": "0xda7ad9dea9397cffddae2f8a052b82f1484252b3", "logo": "https://coin-images.coingecko.com/coins/images/69318/large/river-token.png?1758523089", "incomplete": false}, {"coin": "MYX", "invested": 100.0, "holding": 877.045236, "avg_cost": 0.1140192, "price": 0.07785584, "market_value": 68.28, "sold_recovered": 0.0, "pnl": -31.72, "roi": -0.3172, "mult": 0.683, "priced": true, "closed": false, "chain": "bsc", "addr": "0xd82544bf0dfe8385ef8fa34d67e6e4940cc63e16", "logo": "https://coin-images.coingecko.com/coins/images/55506/large/myx.jpg?1746434335", "incomplete": false}, {"coin": "GLWon", "invested": 100.0, "holding": 0.448792, "avg_cost": 222.82055483, "price": 155.29, "market_value": 69.69, "sold_recovered": 0.0, "pnl": -30.31, "roi": -0.3031, "mult": 0.697, "priced": true, "closed": false, "chain": "bsc", "addr": "0x25a4dbae9a0cd8c75656d6b50ffdf4900cc20d8f", "logo": "https://coin-images.coingecko.com/coins/images/102173732/large/glwon_160x160.png?1781494196", "incomplete": false}, {"coin": "IRYS", "invested": 100.0, "holding": 5755.34613, "avg_cost": 0.01737515, "price": 0.01245025, "market_value": 71.66, "sold_recovered": 0.0, "pnl": -28.34, "roi": -0.2834, "mult": 0.717, "priced": true, "closed": false, "chain": "bsc", "addr": "0x91152b4ef635403efbae860edd0f8c321d7c035d", "logo": "https://coin-images.coingecko.com/coins/images/70808/large/irys.png?1764757341", "incomplete": false}, {"coin": "SKYAI", "invested": 100.0, "holding": 2469.619226, "avg_cost": 0.04049207, "price": 0.02938906, "market_value": 72.58, "sold_recovered": 0.0, "pnl": -27.42, "roi": -0.2742, "mult": 0.726, "priced": true, "closed": false, "chain": "bsc", "addr": "0x92aa03137385f18539301349dcfc9ebc923ffb10", "logo": "https://coin-images.coingecko.com/coins/images/55294/large/1.png?1745517593", "incomplete": false}, {"coin": "YB", "invested": 100.0, "holding": 1099.256973, "avg_cost": 0.09097054, "price": 0.07107832, "market_value": 78.13, "sold_recovered": 0.0, "pnl": -21.87, "roi": -0.2187, "mult": 0.781, "priced": true, "closed": false, "chain": "bsc", "addr": "0xfb93ee8152dd0a0e6f4b49c66c06d800cf1db72d", "logo": "https://coin-images.coingecko.com/coins/images/54871/large/yieldbasis_400x400.png?1760514173", "incomplete": false}, {"coin": "INJ", "invested": 50.0, "holding": 6.67618, "avg_cost": 7.48931235, "price": 5.21563635, "market_value": 34.82, "sold_recovered": 0.0, "pnl": -15.18, "roi": -0.3036, "mult": 0.696, "priced": true, "closed": false, "chain": "bsc", "addr": "0xa2b726b1145a4773f68593cf171187d8ebe4d495", "logo": "https://coin-images.coingecko.com/coins/images/12882/large/Other_200x200.png?1738782212", "incomplete": false}, {"coin": "OPG", "invested": 50.0, "holding": 382.18954, "avg_cost": 0.13082514, "price": 0.10191398, "market_value": 38.95, "sold_recovered": 0.0, "pnl": -11.05, "roi": -0.221, "mult": 0.779, "priced": true, "closed": false, "chain": "bsc", "addr": "0x5feccd17c393caf1001d18164236a37e731fcb9d", "logo": "https://coin-images.coingecko.com/coins/images/102172863/large/coingecko_logo.png?1776349115", "incomplete": false}, {"coin": "ACU", "invested": 100.0, "holding": 1144.800416, "avg_cost": 0.08735147, "price": 0.07806656, "market_value": 89.37, "sold_recovered": 0.0, "pnl": -10.63, "roi": -0.1063, "mult": 0.894, "priced": true, "closed": false, "chain": "bsc", "addr": "0x6ef2ffb38d64afe18ce782da280b300e358cfeaf", "logo": "https://coin-images.coingecko.com/coins/images/34367/large/Acurast-symbol-dark-bg.png?1728418440", "incomplete": false}, {"coin": "FET", "invested": 50.0, "holding": 283.22499, "avg_cost": 0.17653809, "price": 0.1516, "market_value": 42.94, "sold_recovered": 0.0, "pnl": -7.06, "roi": -0.1413, "mult": 0.859, "priced": true, "closed": false, "chain": "", "addr": "", "logo": "https://coin-images.coingecko.com/coins/images/5681/large/ASI.png", "incomplete": false}, {"coin": "AERO", "invested": 50.0, "holding": 107.39735, "avg_cost": 0.46556084, "price": 0.4159, "market_value": 44.67, "sold_recovered": 0.0, "pnl": -5.33, "roi": -0.1067, "mult": 0.893, "priced": true, "closed": false, "chain": "", "addr": "", "logo": "https://coin-images.coingecko.com/coins/images/31745/large/token.png", "incomplete": false}, {"coin": "BLUAI", "invested": 80.79, "holding": 6334.663068, "avg_cost": 0.0127536, "price": 0.01191664, "market_value": 75.49, "sold_recovered": 0.0, "pnl": -5.3, "roi": -0.0656, "mult": 0.934, "priced": true, "closed": false, "chain": "bsc", "addr": "0xed9ae3def8d6f052971bb8b6d1975ff267cf9aad", "logo": "https://coin-images.coingecko.com/coins/images/70201/large/bluwhale.png?1761018866", "incomplete": false}, {"coin": "SOON", "invested": 100.0, "holding": 572.173749, "avg_cost": 0.17477209, "price": 0.16918323, "market_value": 96.8, "sold_recovered": 0.0, "pnl": -3.2, "roi": -0.032, "mult": 0.968, "priced": true, "closed": false, "chain": "bsc", "addr": "0xb9e1fd5a02d3a33b25a14d661414e6ed6954a721", "logo": "https://coin-images.coingecko.com/coins/images/55124/large/red_2.PNG?1743843131", "incomplete": false}, {"coin": "DOOD", "invested": 50.0, "holding": 34195.805115, "avg_cost": 0.00146217, "price": 0.00144296, "market_value": 49.34, "sold_recovered": 0.0, "pnl": -0.66, "roi": -0.0131, "mult": 0.987, "priced": true, "closed": false, "chain": "bsc", "addr": "0x722294f6c97102fb0ddb5b907c8d16bdeab3f6d9", "logo": "https://coin-images.coingecko.com/coins/images/54399/large/dood.png?1774374789", "incomplete": false}, {"coin": "FHE", "invested": 100.0, "holding": 4861.967373, "avg_cost": 0.02056781, "price": 0.02060622, "market_value": 100.19, "sold_recovered": 0.0, "pnl": 0.19, "roi": 0.0019, "mult": 1.002, "priced": true, "closed": false, "chain": "bsc", "addr": "0xd55c9fb62e176a8eb6968f32958fefdd0962727e", "logo": "https://coin-images.coingecko.com/coins/images/55161/large/mind.jpg?1744276359", "incomplete": false}, {"coin": "VIRTUAL", "invested": 100.0, "holding": 178.007428, "avg_cost": 0.56177431, "price": 0.58769295, "market_value": 104.61, "sold_recovered": 0.0, "pnl": 4.61, "roi": 0.0461, "mult": 1.046, "priced": true, "closed": false, "chain": "base", "addr": "0x0b3e328455c4059eeb9e3f84b5543f74e24e7e1b", "logo": "https://coin-images.coingecko.com/coins/images/34057/large/LOGOMARK.png", "incomplete": false}, {"coin": "FOLKS", "invested": 100.0, "holding": 54.692943, "avg_cost": 1.82838945, "price": 1.95326746, "market_value": 106.83, "sold_recovered": 0.0, "pnl": 6.83, "roi": 0.0683, "mult": 1.068, "priced": true, "closed": false, "chain": "bsc", "addr": "0xff7f8f301f7a706e3cfd3d2275f5dc0b9ee8009b", "logo": "https://coin-images.coingecko.com/coins/images/70268/large/1000331462.png?1761335326", "incomplete": false}, {"coin": "TST", "invested": 150.0, "holding": 13941.000481, "avg_cost": 0.01075963, "price": 0.01148259, "market_value": 160.08, "sold_recovered": 0.0, "pnl": 10.08, "roi": 0.0672, "mult": 1.067, "priced": true, "closed": false, "chain": "bsc", "addr": "0x86bb94ddd16efc8bc58e6b056e8df71d9e666429", "logo": "https://coin-images.coingecko.com/coins/images/54274/large/Test.png?1738997629", "incomplete": false}, {"coin": "APR", "invested": 100.0, "holding": 532.619225, "avg_cost": 0.18775139, "price": 0.21438012, "market_value": 114.18, "sold_recovered": 0.0, "pnl": 14.18, "roi": 0.1418, "mult": 1.142, "priced": true, "closed": false, "chain": "bsc", "addr": "0x299ad4299da5b2b93fba4c96967b040c7f611099", "logo": "https://coin-images.coingecko.com/coins/images/70220/large/logo-icon-Gradient.png?1761118006", "incomplete": false}, {"coin": "RECALL", "invested": 50.0, "holding": 1602.95668, "avg_cost": 0.03119236, "price": 0.040263, "market_value": 64.54, "sold_recovered": 0.0, "pnl": 14.54, "roi": 0.2908, "mult": 1.291, "priced": true, "closed": false, "chain": "", "addr": "", "logo": "https://coin-images.coingecko.com/coins/images/69994/large/recall-logo.jpeg", "incomplete": false}, {"coin": "PYTH", "invested": 100.0, "holding": 2650.028366, "avg_cost": 0.03773545, "price": 0.04444, "market_value": 117.77, "sold_recovered": 0.0, "pnl": 17.77, "roi": 0.1777, "mult": 1.178, "priced": true, "closed": false, "chain": "", "addr": "", "logo": "https://coin-images.coingecko.com/coins/images/31924/large/pyth.png", "incomplete": false}, {"coin": "ESPORTS", "invested": 50.0, "holding": 1482.042675, "avg_cost": 0.03373722, "price": 0.04645562, "market_value": 68.85, "sold_recovered": 0.0, "pnl": 18.85, "roi": 0.377, "mult": 1.377, "priced": true, "closed": false, "chain": "bsc", "addr": "0xf39e4b21c84e737df08e2c3b32541d856f508e48", "logo": "https://coin-images.coingecko.com/coins/images/67430/large/symbol-esports.png?1770141653", "incomplete": false}, {"coin": "AIO", "invested": 100.0, "holding": 1077.638884, "avg_cost": 0.09279546, "price": 0.11176218, "market_value": 120.44, "sold_recovered": 0.0, "pnl": 20.44, "roi": 0.2044, "mult": 1.204, "priced": true, "closed": false, "chain": "bsc", "addr": "0x81a7da4074b8e0ed51bea40f9dcbdf4d9d4832b4", "logo": "https://coin-images.coingecko.com/coins/images/67822/large/olaxbt.jpg?1753948689", "incomplete": false}, {"coin": "Beat", "invested": 60.0, "holding": 25.134316, "avg_cost": 2.38717461, "price": 3.2944135, "market_value": 82.8, "sold_recovered": 0.0, "pnl": 22.8, "roi": 0.38, "mult": 1.38, "priced": true, "closed": false, "chain": "bsc", "addr": "0xcf3232b85b43bca90e51d38cc06cc8bb8c8a3e36", "logo": "https://coin-images.coingecko.com/coins/images/70428/large/audiera.png?1761964064", "incomplete": false}, {"coin": "ENSO", "invested": 100.0, "holding": 158.97738, "avg_cost": 0.6290203, "price": 0.80350841, "market_value": 127.74, "sold_recovered": 0.0, "pnl": 27.74, "roi": 0.2774, "mult": 1.277, "priced": true, "closed": false, "chain": "bsc", "addr": "0xfeb339236d25d3e415f280189bc7c2fbab6ae9ef", "logo": "https://coin-images.coingecko.com/coins/images/66537/large/enso.jpg?1749697301", "incomplete": false}, {"coin": "PRL", "invested": 100.0, "holding": 712.008562, "avg_cost": 0.14044775, "price": 0.1820494, "market_value": 129.62, "sold_recovered": 0.0, "pnl": 29.62, "roi": 0.2962, "mult": 1.296, "priced": true, "closed": false, "chain": "bsc", "addr": "0xd20fb09a49a8e75fef536a2dbc68222900287bac", "logo": "https://coin-images.coingecko.com/coins/images/102173580/large/pearl.png", "incomplete": false}, {"coin": "AIA", "invested": 130.0, "holding": 2362.310105, "avg_cost": 0.05503088, "price": 0.06855253, "market_value": 161.94, "sold_recovered": 0.0, "pnl": 31.94, "roi": 0.2457, "mult": 1.246, "priced": true, "closed": false, "chain": "bsc", "addr": "0x53ec33cd4fa46b9eced9ca3f6db626c5ffcd55cc", "logo": "https://coin-images.coingecko.com/coins/images/69053/large/DA-AIA.png?1757348456", "incomplete": false}, {"coin": "SENTIS", "invested": 200.0, "holding": 1278.231451, "avg_cost": 0.15646619, "price": 0.20583654, "market_value": 263.11, "sold_recovered": 0.0, "pnl": 63.11, "roi": 0.3155, "mult": 1.316, "priced": true, "closed": false, "chain": "bsc", "addr": "0x8fd0d741e09a98e82256c63f25f90301ea71a83e", "logo": "https://coin-images.coingecko.com/coins/images/70504/large/Sentism_AI.png?1762257624", "incomplete": false}], "timeline": [{"date": "2026-06-13", "cum": 810.79}, {"date": "2026-06-17", "cum": 910.79}, {"date": "2026-06-19", "cum": 920.79}, {"date": "2026-06-21", "cum": 1420.79}, {"date": "2026-06-24", "cum": 1470.79}, {"date": "2026-06-25", "cum": 1570.79}, {"date": "2026-06-28", "cum": 1820.79}, {"date": "2026-06-30", "cum": 1970.79}, {"date": "2026-07-05", "cum": 2170.79}, {"date": "2026-07-07", "cum": 2270.79}, {"date": "2026-07-09", "cum": 2370.79}, {"date": "2026-07-12", "cum": 2570.79}, {"date": "2026-07-19", "cum": 2670.79}], "lookback_months": 3, "site": {"title": "山寨定投实盘", "subtitle": "恐慌才买 · 三条件选币 · 10x 止盈", "x_url": "", "square_url": "", "strategy": ["【选币三条件，缺一不碰】", "① 已上币安合约  ② 还在币安 Alpha  ③ 已上 Aster 合约", "【什么时候买，只看恐慌贪婪指数】", ">20 不买；11–20 正常定投；0–10 加速买入", "【什么时候卖，按平均成本】", "3x 卖 20–25%，5x 再卖 25–30%，8x 移动止盈，10x 基本清仓", "每月 1 号发盈亏月报，亏也照发。仅个人实盘记录，非投资建议 DYOR。"]}};        // static 时是数据对象，server 时是 null
+let D = null, P = [], t = {};
+function setData(d){ D = d; P = D.positions || []; t = D.totals || {}; }
+const tip = document.getElementById('tip');
+const fmt = (n,d=0)=>n==null?'—':n.toLocaleString('en-US',{minimumFractionDigits:d,maximumFractionDigits:d});
+const sign = n => (n>=0?'+':'')+fmt(n);
+const pct = n => (n>=0?'+':'')+(n*100).toFixed(1)+'%';
+const cls = n => n>=0?'pos':'neg';
+// 有效数字格式：价格/均价——按量级给合理位数，去掉无意义的长尾小数
+function sig(x,n=4){
+  if(x==null||x===''||!isFinite(+x)) return '—';
+  x=+x; if(x===0) return '0';
+  const neg=x<0; x=Math.abs(x);
+  let s;
+  if(x>=1){ const id=Math.floor(Math.log10(x))+1; s=x.toFixed(Math.max(0,Math.min(6,n-id))); }
+  else { const lead=-Math.floor(Math.log10(x))-1; s=x.toFixed(Math.min(10,lead+n)); }
+  s=s.replace(/(\.\d*?)0+$/,'$1').replace(/\.$/,'');
+  const [i,f]=s.split('.'); const ii=(+i).toLocaleString('en-US');
+  return (neg?'-':'')+(f?ii+'.'+f:ii);
+}
+// 数量格式：大额取整加千分位，小额给有效数字
+function qty(x){
+  if(x==null||!isFinite(+x)) return '—';
+  x=+x; const a=Math.abs(x);
+  if(a===0) return '0';
+  if(a>=1000) return Math.round(x).toLocaleString('en-US');
+  if(a>=1) return sig(x,4);
+  return sig(x,3);
+}
+// 币种头像：有真 logo 用 logo，缺的用哈希取色的字母底
+const PALETTE=['#2a78d6','#1baf7a','#eda100','#008300','#4a3aa7','#e34948','#e87ba4','#eb6834'];
+function hueOf(s){let h=0;for(const c of (s||''))h=(h*31+c.charCodeAt(0))>>>0;return PALETTE[h%PALETTE.length];}
+function avatar(coin,logo){
+  const init=(coin||'?').replace(/[^A-Za-z0-9一-龥]/g,'').slice(0,2).toUpperCase()||'?';
+  const img=logo?`<img src="${logo}" alt="" loading="lazy" onerror="this.remove()">`:'';
+  return `<span class="ava" style="background:${hueOf(coin)}">${init}${img}</span>`;
+}
+const incomplete = r => r.holding < -1e-9;   // 买入在窗口外（有卖无买）
+function showTip(e,html){tip.innerHTML=html;tip.style.opacity=1;
+  let x=e.clientX+12,y=e.clientY+12; if(x+tip.offsetWidth>innerWidth)x=e.clientX-tip.offsetWidth-12;
+  tip.style.left=x+'px';tip.style.top=y+'px';}
+function hideTip(){tip.style.opacity=0;}
+
+// header / footer 文案
+function renderMeta(){
+  document.getElementById('sub').textContent = `最近 ${D.lookback_months} 个月口径`;
+  document.getElementById('foot').innerHTML =
+    `跨链/手工买入的成本来自登记 · 只统计最近 ${D.lookback_months} 个月 · 盈=绿 亏=红（币安口径）· 非投资建议 DYOR`;
+}
+// 公开发布：有 D.site 才显示名号/链接/策略段（本地模式不带 site）
+function renderSite(){
+  const s=D.site, strat=document.getElementById('strategySec'), links=document.getElementById('siteLinks');
+  if(!s){ strat.style.display='none'; links.innerHTML=''; return; }
+  document.getElementById('pageTitle').textContent='📊 '+s.title;
+  document.title=s.title;
+  let l='';
+  if(s.x_url) l+=`<a href="${s.x_url}" target="_blank" rel="noopener">X ↗</a>`;
+  if(s.square_url) l+=`<a href="${s.square_url}" target="_blank" rel="noopener">币安广场 ↗</a>`;
+  links.innerHTML=l;
+  const parts=[]; if(s.subtitle) parts.push(s.subtitle);
+  parts.push(`最近 ${D.lookback_months} 个月`); parts.push(`数据更新于 ${D.generated}`);
+  document.getElementById('sub').textContent=parts.join(' · ');
+  document.getElementById('strategyBody').textContent=(s.strategy||[]).join('\n');
+  strat.style.display='';
+}
+function renderFng(){const f=D.fng;
+  document.getElementById('fng').textContent = f.value==null?'':`恐慌贪婪指数 ${f.value} ${f.classification||''}`;}
+
+// 现价变动后就地重算 市值/盈亏/收益率 与总计
+function recompute(){
+  P.forEach(p=>{
+    p.priced = p.closed || p.price>0;
+    p.market_value = Math.max(p.holding,0)*p.price;
+    p.pnl = p.market_value + p.sold_recovered - p.invested;
+    p.roi = p.invested>0 ? p.pnl/p.invested : 0;
+    p.mult = p.avg_cost>0 ? p.price/p.avg_cost : 0;
+  });
+  const good = P.filter(p=>p.priced && !incomplete(p));
+  const unp  = P.filter(p=>!p.priced && !incomplete(p));
+  t.invested = good.reduce((s,p)=>s+p.invested,0);
+  t.market_value = good.reduce((s,p)=>s+p.market_value,0);
+  t.recovered = good.reduce((s,p)=>s+p.sold_recovered,0);
+  t.pnl = t.market_value + t.recovered - t.invested;
+  t.roi = t.invested? t.pnl/t.invested : 0;
+  t.held = P.filter(p=>p.holding>1e-9).length;
+  t.priced_held = P.filter(p=>p.holding>1e-9 && p.price>0).length;
+  t.unpriced = unp.map(p=>({coin:p.coin}));
+  t.unpriced_invested = unp.reduce((s,p)=>s+p.invested,0);
+}
+
+function renderKPIs(){
+  const kpis=[
+    {lab:'累计投入', val:'$'+fmt(t.invested), sub:''},
+    {lab:'当前市值', val:'$'+fmt(t.market_value), sub:`已止盈回收 $${fmt(t.recovered)}`},
+    {lab:'浮动盈亏', val:sign(t.pnl), sub:pct(t.roi), cls:cls(t.pnl)},
+    {lab:'在持币种', val:t.held, sub:`${t.priced_held}/${t.held} 已估价`},
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(k=>`<div class="kpi">
+    <div class="lab">${k.lab}</div>
+    <div class="val ${k.cls||''}">${k.val}</div>
+    <div class="sub2 ${k.cls||''}">${k.sub}</div></div>`).join('');
+}
+
+// ---- Area: cumulative invested (静态，投入不随价变) ----
+function renderArea(){
+  const tl=D.timeline; const el=document.getElementById('area');
+  if(!tl.length){el.innerHTML='<div class="note">暂无定投买入记录</div>';return;}
+  const W=1000,H=260,P={t:14,r:16,b:26,l:52};
+  const xs=tl.map(d=>+new Date(d.date)); const x0=Math.min(...xs),x1=Math.max(...xs)||x0+1;
+  const ymax=Math.max(...tl.map(d=>d.cum))*1.08||1;
+  const X=v=>P.l+(x1===x0?0.5:(v-x0)/(x1-x0))*(W-P.l-P.r);
+  const Y=v=>P.t+(1-v/ymax)*(H-P.t-P.b);
+  let grid='',ticks=4;
+  for(let i=0;i<=ticks;i++){const v=ymax*i/ticks,y=Y(v);
+    grid+=`<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}"/><text x="${P.l-8}" y="${y+4}" text-anchor="end">$${fmt(v)}</text>`;}
+  const pts=tl.map(d=>[X(+new Date(d.date)),Y(d.cum)]);
+  const line=pts.map((p,i)=>(i?'L':'M')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+  const area=`M${pts[0][0].toFixed(1)} ${Y(0).toFixed(1)} `+pts.map(p=>'L'+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ')+` L${pts[pts.length-1][0].toFixed(1)} ${Y(0).toFixed(1)} Z`;
+  // x labels: first,last
+  const xl=`<text x="${X(x0)}" y="${H-8}" text-anchor="start">${tl[0].date}</text><text x="${X(x1)}" y="${H-8}" text-anchor="end">${tl[tl.length-1].date}</text>`;
+  const dots=pts.map((p,i)=>`<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="9" fill="transparent" data-i="${i}"/>`).join('');
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="累计定投投入曲线">
+    <g class="axis">${grid}${xl}</g>
+    <path d="${area}" fill="var(--blue-fill)"/>
+    <path d="${line}" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round"/>
+    <g>${dots}</g></svg>`;
+  el.querySelectorAll('circle').forEach(c=>{const d=tl[+c.dataset.i];
+    c.addEventListener('mouseenter',e=>{c.setAttribute('fill','var(--blue)');c.setAttribute('r','4');
+      showTip(e,`${d.date}<br>累计投入 $${fmt(d.cum)}`)});
+    c.addEventListener('mousemove',e=>showTip(e,`${d.date}<br>累计投入 $${fmt(d.cum)}`));
+    c.addEventListener('mouseleave',()=>{c.setAttribute('fill','transparent');c.setAttribute('r','9');hideTip()});});
+  document.getElementById('areaNote').textContent=`共 ${tl.length} 个定投日，累计投入 $${fmt(t.invested)}。`;
+}
+
+// ---- Table（点表头排序）----
+const COLS=[
+  {label:'币种',key:'coin',num:false},{label:'投入$',key:'invested',num:true},
+  {label:'持仓',key:'holding',num:true},{label:'均价',key:'avg_cost',num:true},
+  {label:'现价',key:'price',num:true},{label:'市值$',key:'market_value',num:true},
+  {label:'盈亏$',key:'pnl',num:true},{label:'收益率',key:'roi',num:true},
+];
+let sortKey='pnl', sortDir=-1;             // 默认盈亏降序；dir: 1=升 -1=降
+// 取排序值；无意义的（无现价/历史/未成交）返回 null，排序时永远沉底
+function sortVal(r,key){
+  if(key==='coin') return (r.coin||'').toLowerCase();
+  const showPnl = r.priced && !incomplete(r);
+  if((key==='pnl'||key==='roi'||key==='market_value') && !showPnl) return null;
+  if(key==='price' && !(r.priced && r.price>0)) return null;
+  if(key==='avg_cost' && !(r.avg_cost>0)) return null;
+  if(key==='holding' && incomplete(r)) return null;
+  const v=r[key]; return (v==null||!isFinite(v))?null:v;
+}
+function renderTable(){
+  let h='<thead><tr>'+COLS.map(c=>{
+    const active=c.key===sortKey, arrow=active?(sortDir===1?' ↑':' ↓'):'';
+    return `<th data-key="${c.key}" class="sortable${active?' active':''}">${c.label}${arrow}</th>`;
+  }).join('')+'</tr></thead><tbody>';
+  const mut = s => `<span style="color:var(--muted)">${s}</span>`;
+  const rows = P.filter(r=>r.holding>1e-9).sort((a,b)=>{   // 只列还在持有的
+    const va=sortVal(a,sortKey), vb=sortVal(b,sortKey);
+    if(va===null && vb===null) return 0;
+    if(va===null) return 1;                // null 恒沉底，与方向无关
+    if(vb===null) return -1;
+    const cmp = (typeof va==='string') ? va.localeCompare(vb) : (va-vb);
+    return cmp*sortDir;
+  });
+  rows.forEach(r=>{
+    const inc=incomplete(r);
+    const showPnl = r.priced && !inc;
+    const pnlc = showPnl?cls(r.pnl):'';
+    const hold = inc ? `<span style="color:var(--muted)" title="买入在3个月窗口外">历史</span>`
+                     : (r.closed ? '0' : qty(r.holding));
+    const px = r.priced ? (r.price>0?sig(r.price,3):'—') : mut('无现价');
+    const coinCell = `<span class="coin-cell">${avatar(r.coin,r.logo)}${r.coin}</span>`;
+    h+=`<tr><td>${coinCell}</td><td>${fmt(r.invested)}</td><td>${hold}</td>`+
+       `<td>${r.avg_cost>0?sig(r.avg_cost,3):'—'}</td><td>${px}</td>`+
+       `<td>${r.priced&&!inc?fmt(r.market_value):'—'}</td>`+
+       `<td class="${pnlc}">${showPnl?sign(r.pnl):'—'}</td>`+
+       `<td class="${pnlc}">${showPnl&&r.invested>0?pct(r.roi):'—'}</td></tr>`;
+  });
+  document.getElementById('tbl').innerHTML=h+'</tbody>';
+  document.getElementById('tblNote').textContent =
+    t.unpriced.length?`其中 ${t.unpriced.length} 个币暂无现价（投入 $${fmt(t.unpriced_invested)}），未计入盈亏口径：`+t.unpriced.map(u=>u.coin).join('、'):'';
+}
+// 表头点击排序（委托绑定一次，重渲染不丢）
+document.getElementById('tbl').addEventListener('click', e=>{
+  const th=e.target.closest('th[data-key]'); if(!th) return;
+  const key=th.dataset.key;
+  if(key===sortKey) sortDir=-sortDir; else { sortKey=key; sortDir=(key==='coin'?1:-1); }
+  renderTable();
+});
+
+// ---- 已清仓：持仓归零（卖光）的币，看已实现盈亏 ----
+function renderClosed(){
+  const sec=document.getElementById('closedSec');
+  // 卖光=持仓≈0（含卖多于买的历史边界），且有买/卖记录
+  const closed = P.filter(r=>r.holding<=1e-9 && (r.invested>0 || r.sold_recovered>0))
+                  .sort((a,b)=>(b.pnl||0)-(a.pnl||0));
+  if(!closed.length){ sec.style.display='none'; return; }
+  sec.style.display='';
+  document.getElementById('closedCount').textContent=`（${closed.length} 个）`;
+  const cols=['币种','投入$','已回收$','已实现盈亏$','收益率'];
+  let h='<thead><tr>'+cols.map((c,i)=>`<th${i?'':''}>${c}</th>`).join('')+'</tr></thead><tbody>';
+  let totInv=0, totRec=0, totPnl=0;
+  closed.forEach(r=>{
+    const inc=incomplete(r);
+    const realized = r.invested>0;   // 有窗口内成本才算收益率
+    totInv+=r.invested; totRec+=r.sold_recovered; if(realized) totPnl+=r.pnl;
+    const pnlc = realized?cls(r.pnl):'';
+    h+=`<tr><td><span class="coin-cell">${avatar(r.coin,r.logo)}${r.coin}</span></td>`+
+       `<td>${r.invested>0?fmt(r.invested):(inc?'<span style="color:var(--muted)" title="买入在3个月窗口外">历史</span>':'—')}</td>`+
+       `<td>${r.sold_recovered>0?fmt(r.sold_recovered):'—'}</td>`+
+       `<td class="${pnlc}">${realized?sign(r.pnl):'—'}</td>`+
+       `<td class="${pnlc}">${realized?pct(r.roi):'—'}</td></tr>`;
+  });
+  document.getElementById('tblClosed').innerHTML=h+'</tbody>';
+  document.getElementById('closedNote').textContent=
+    `已实现：投入 $${fmt(totInv)} → 回收 $${fmt(totRec)}，合计 ${sign(totPnl)}（${totInv>0?pct(totPnl/totInv):'—'}）`;
+}
+
+const btn = document.getElementById('refreshBtn');
+const updBtn = document.getElementById('updateBtn');
+const upd = document.getElementById('updated');
+function setUpd(s){ upd.textContent = s; }
+function stamp(){ return '最后刷新 '+new Date().toLocaleTimeString('zh-CN',{hour12:false}); }
+function renderAll(){ renderMeta(); renderSite(); renderFng(); renderKPIs(); renderArea(); renderTable(); renderClosed(); }
+
+// ---- static 模式：浏览器内直接拉行情（币安全市场 + GeckoTerminal + 恐慌指数）----
+async function fetchBinance(){
+  const m={};
+  try{
+    const r=await fetch('https://api.binance.com/api/v3/ticker/price');
+    if(r.ok){ (await r.json()).forEach(x=>{ if(x.symbol && x.symbol.endsWith('USDT')) m[x.symbol.slice(0,-4)]=+x.price; }); }
+  }catch(e){}
+  return m;
+}
+async function fetchGecko(need){
+  const m={};
+  for(const chain of Object.keys(need)){
+    const ps=need[chain];
+    for(let i=0;i<ps.length;i+=30){
+      const chunk=ps.slice(i,i+30);
+      try{
+        const r=await fetch(`https://api.geckoterminal.com/api/v2/networks/${chain}/tokens/multi/${chunk.map(p=>p.addr).join(',')}`);
+        if(r.ok){ ((await r.json()).data||[]).forEach(tk=>{const a=tk.attributes; if(a && a.address && a.price_usd) m[a.address.toLowerCase()]=+a.price_usd;}); }
+      }catch(e){}
+    }
+  }
+  return m;
+}
+async function refreshStatic(){
+  btn.disabled=true; setUpd('刷新中…');
+  const bmap = await fetchBinance();
+  const need={};
+  P.forEach(p=>{ const s=p.coin.toUpperCase(); if(!(s in bmap) && p.addr && p.chain){ (need[p.chain]=need[p.chain]||[]).push(p); }});
+  const gmap = await fetchGecko(need);
+  P.forEach(p=>{
+    const s=p.coin.toUpperCase();
+    let np = (s in bmap) ? bmap[s] : (p.addr && gmap[p.addr.toLowerCase()]!=null ? gmap[p.addr.toLowerCase()] : null);
+    if(np!=null && isFinite(np) && np>0) p.price=np;
+  });
+  try{
+    const r=await fetch('https://api.alternative.me/fng/?limit=1');
+    if(r.ok){ const it=(await r.json()).data[0]; D.fng={value:+it.value, classification:it.value_classification}; }
+  }catch(e){}
+  recompute(); renderKPIs(); renderTable(); renderFng();
+  setUpd(stamp()+' · 每 60 秒自动');
+  btn.disabled=false;
+}
+
+// ---- server 模式：调本地后端接口（现价/持仓都由后端算好返回）----
+async function loadServer(url, method, label){
+  btn.disabled=true; if(updBtn) updBtn.disabled=true; setUpd(label||'刷新中…');
+  try{
+    const r = await fetch(url, {method: method||'GET'});
+    const d = await r.json();
+    if(d.error) throw new Error(d.error);
+    setData(d); renderAll();
+    setUpd(stamp()+' · 每 60 秒自动');
+  }catch(e){ setUpd('刷新失败：'+e.message); }
+  btn.disabled=false; if(updBtn) updBtn.disabled=false;
+}
+
+if(MODE==='server'){
+  updBtn.style.display='';
+  loadServer('/api/data','GET','加载中…');
+  setInterval(()=>loadServer('/api/data','GET'), 60000);
+  btn.addEventListener('click', ()=>loadServer('/api/data','GET'));
+  updBtn.addEventListener('click', ()=>loadServer('/api/update','POST','拉取链上中…（较慢，勿关）'));
+}else{
+  setData(_EMBED); renderAll();
+  setUpd('数据生成于 '+D.generated+'，正在拉实时价…');
+  refreshStatic();
+  setInterval(refreshStatic, 60000);
+  btn.addEventListener('click', refreshStatic);
+}
+</script>
+</body>
+</html>
